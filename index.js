@@ -1,3 +1,5 @@
+import Request from './src/request'
+
 const base = {
   log () {},
   logPackage () {},
@@ -8,7 +10,7 @@ const base = {
 };
 
 const pm = (function () {
-  // 向前兼容
+  // compatibility
   if (!window.performance) return base;
 
   const pMonitor = { ...base };
@@ -34,32 +36,65 @@ const pm = (function () {
       .map(getName);
   };
 
-  // reprot data mannually
-  pMonitor.log = (url, data = {}, type = 'POST') => {};
+  pMonitor.getToken = async (Authorization) => {
+    let { token, repoName } = config
+    if (!token) {
+      const tokenApi = `/api/users/log/tokens?platform=qiniu&method=POST&repo=${repoName}`
+      const res = await Request({
+        url: tokenApi,
+        methods: 'GET',
+        headers: {
+          Authorization
+        }
+      })
+      token = res?.data?.data?.token
+      console.log('token', token);
+      pMonitor.updateConfig({ token })
+    }
+    return token
+  }
 
+  pMonitor.updateConfig = (updateFields = {}) => {
+    config = { ...config, ...updateFields }
+  }
+
+  // reprot data mannually
+  pMonitor.log = async (data = {}) => {
+    let { token, repoName, Authorization } = config
+    if (!token) {
+      token = await pMonitor.getToken(Authorization)
+    }
+    const url = `https://nb-pipeline.qiniuapi.com/v2/streams/${repoName}/data`
+    Request({
+      baseURL: url,
+      methods: 'POST',
+      headers: {
+        'Authorization': 'Pandora ' + token, // token是接口获取到的七牛token
+        'Content-Type': 'text/plain'
+      },
+      data: {
+        c: data
+      }
+    })
+  };
   // report data automatically
   pMonitor.logPackage = () => {
-    const { url, timeoutUrl, method } = config;
     const domComplete = pMonitor.getLoadTime();
     const timeoutRes = pMonitor.getTimeoutRes(config.timeout);
-    pMonitor.log(url, { domComplete }, method);
-    pMonitor.log(timeoutUrl, { timeoutRes }, method);
+    pMonitor.log({ domComplete, timeoutRes });
   };
 
   /**
    * @param {object} option
-   * @param {string} option.url 页面加载数据的上报地址
-   * @param {string} option.timeoutUrl 页面资源超时的上报地址
-   * @param {string=} [option.method='POST'] 请求方式
+   * @param {string} option.url
    * @param {number=} [option.timeout=10000]
    */
   pMonitor.init = (option) => {
-    const { url, timeoutUrl, method = 'POST', timeout = 10000 } = option;
+    const { timeout = 10000, repoName = 'niuwa_web_dev', Authorization } = option;
     config = {
-      url,
-      timeoutUrl,
-      method,
-      timeout
+      timeout,
+      repoName,
+      Authorization
     };
   };
   return pMonitor;
