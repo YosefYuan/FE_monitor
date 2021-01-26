@@ -1,0 +1,23 @@
+{
+  "extends": "standard",
+  "parser": "vue-eslint-parser",
+  "parserOptions": {
+    "ecmaVersion": 6,
+    "sourceType": "module",
+    "legacyDecorators": true,
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "parser": "babel-eslint"
+  },
+  "rules": {
+    "semi": 0,
+    "no-func-assign": 0,
+    "camelcase": "off"
+  },
+  "globals":{
+    "document": true,
+    "localStorage": true,
+    "window": true
+  }
+}
