@@ -3,9 +3,9 @@ import Request from './src/request'
 const base = {
   log () {},
   logPackage () {},
-  getLoadTime () {},
-  getTimeoutRes () {},
   bindEvent () {},
+  getToken () {},
+  updateConfig () {},
   init () {}
 };
 
@@ -15,25 +15,13 @@ const pm = (function () {
 
   const pMonitor = { ...base };
   let config = {};
-  const SEC = 1000;
-  const TIMEOUT = 10 * SEC;
-  const setTime = (limit = TIMEOUT) => (time) => time >= limit;
-  const getLoadTime = ({ startTime, responseEnd }) => {
-    return responseEnd - startTime
-  };
-  const getName = ({ name }) => name;
 
-  pMonitor.getLoadTime = () => {
-    const [{ domComplete }] = window.performance.getEntriesByType('navigation');
-    return domComplete;
+  pMonitor.getNavigation = () => {
+    return window.performance.getEntriesByType('navigation');
   };
 
-  pMonitor.getTimeoutRes = (limit = TIMEOUT) => {
-    const isTimeout = setTime(limit);
-    const resourceTimes = window.performance.getEntriesByType('resource');
-    return resourceTimes
-      .filter((item) => isTimeout(getLoadTime(item)))
-      .map(getName);
+  pMonitor.getResourceTimes = () => {
+    return window.performance.getEntriesByType('resource');
   };
 
   pMonitor.getToken = async (Authorization) => {
@@ -42,13 +30,12 @@ const pm = (function () {
       const tokenApi = `/api/users/log/tokens?platform=qiniu&method=POST&repo=${repoName}`
       const res = await Request({
         url: tokenApi,
-        methods: 'GET',
+        method: 'GET',
         headers: {
           Authorization
         }
       })
       token = res?.data?.data?.token
-      console.log('token', token);
       pMonitor.updateConfig({ token })
     }
     return token
@@ -62,12 +49,16 @@ const pm = (function () {
   pMonitor.log = async (data = {}) => {
     let { token, repoName, Authorization } = config
     if (!token) {
-      token = await pMonitor.getToken(Authorization)
+      if (Authorization) {
+        token = await pMonitor.getToken(Authorization)
+      } else {
+        return false
+      }
     }
     const url = `https://nb-pipeline.qiniuapi.com/v2/streams/${repoName}/data`
     Request({
       baseURL: url,
-      methods: 'POST',
+      method: 'POST',
       headers: {
         'Authorization': 'Pandora ' + token, // token是接口获取到的七牛token
         'Content-Type': 'text/plain'
@@ -77,12 +68,32 @@ const pm = (function () {
       }
     })
   };
-  // report data automatically
+
   pMonitor.logPackage = () => {
-    const domComplete = pMonitor.getLoadTime();
-    const timeoutRes = pMonitor.getTimeoutRes(config.timeout);
-    pMonitor.log({ domComplete, timeoutRes });
+    const navigation = pMonitor.getNavigation();
+    let resourceTimes = pMonitor.getResourceTimes();
+    // resourceTimes = [...Array(10)].map(() => ({...item, name: +new Date(), connectEnd: Math.random() * 100, connectStart: Math.random() * 100}))
+    pMonitor.log({ navigation, resourceTimes });
   };
+
+  // report data automatically
+  pMonitor.bindEvent = () => {
+    if (document.readyState === 'complete') {
+      pMonitor.logPackage()
+    } else {
+      const oldOnload = window.onload
+      window.onload = e => {
+        if (oldOnload && typeof oldOnload === 'function') {
+          oldOnload(e)
+        }
+        if (window.requestIdleCallback) {
+          window.requestIdleCallback(pMonitor.logPackage)
+        } else {
+          setTimeout(pMonitor.logPackage)
+        }
+      }
+    }
+  }
 
   /**
    * @param {object} option
@@ -90,9 +101,8 @@ const pm = (function () {
    * @param {number=} [option.timeout=10000]
    */
   pMonitor.init = (option) => {
-    const { timeout = 10000, repoName = 'niuwa_web_dev', Authorization } = option;
+    const { repoName = 'niuwa_web_dev', Authorization } = option;
     config = {
-      timeout,
       repoName,
       Authorization
     };
