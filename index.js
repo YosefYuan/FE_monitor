@@ -35,7 +35,7 @@ const pm = (function () {
           Authorization
         }
       })
-      token = res?.data?.data?.token
+      token = res && res.data && res.data.data && res.data.data.token
       pMonitor.updateConfig({ token })
     }
     return token
